@@ -194,6 +194,149 @@ def build_cost_section(row: pd.Series, seoul_vac: float, prem: dict | None, cfg:
     return "\n".join(lines)
 
 
+def build_area_section(row: pd.Series, seoul_vac: float, cfg: dict) -> tuple[str, str, str]:
+    """1부 — 이 동네는 어떤 곳인가. 업종과 무관한 동네의 체질.
+
+    (요약, 표, 쉽게 말하면) 세 조각을 돌려준다.
+    """
+    area = cfg["entry_cost"]["assumed_area_sqm"]
+    flow = row.get("footfall")
+    life = row.get("TRDAR_CHNGE_IX_NM") or "—"
+
+    summary = (f"**{row['TRDAR_CD_NM']}**{_josa(row['TRDAR_CD_NM'])} "
+               f"{row['SIGNGU_CD_NM']}의 {row['TRDAR_SE_CD_NM']}이다. "
+               f"상권 흐름은 **{life}** 국면이다.")
+
+    rows = [
+        "| 항목 | 값 | 뜻 |",
+        "|---|---|---|",
+        f"| 분기 유동인구 | {flow:,.0f}명 | 이 골목을 지나는 사람 수 |" if pd.notna(flow)
+        else "| 분기 유동인구 | 지표 없음 | |",
+        f"| 상권 흐름 | **{life}** | 상권이 커지는 중인지 줄어드는 중인지 |",
+    ]
+    if pd.notna(row.get("rent_per_sqm")):
+        rows.append(
+            f"| ㎡당 월 임대료 | {row['rent_per_sqm']:.1f} 천원 | "
+            f"{area}㎡(약 {area/3.3:.0f}평) 환산 **{row['monthly_rent']/10000:,.0f}만원** |"
+        )
+        rows.append(f"| 임대료 출처 | {row['reb_match_reason']} · {row['reb_district']} | |")
+    if pd.notna(row.get("vacancy_rate")):
+        rows.append(
+            f"| 공실률 | **{row['vacancy_rate']:.1f}%** | 서울 주요상권 평균 {seoul_vac:.1f}% |"
+        )
+
+    # 쉽게 말하면
+    bits = []
+    if pd.notna(row.get("vacancy_rate")):
+        if row["vacancy_rate"] > seoul_vac * 1.3:
+            bits.append("빈 가게가 서울 평균보다 눈에 띄게 많다. 임대인이 아쉬운 상황이라 **월세를 깎기 좋은 때**다")
+        elif row["vacancy_rate"] < seoul_vac * 0.7:
+            bits.append("빈 가게가 거의 없다. 자리가 귀해서 **협상 여지는 크지 않다**")
+    if life in ("상권확장", "다이나믹"):
+        bits.append("상권은 커지는 쪽으로 움직이고 있다")
+    elif life in ("상권축소", "정체"):
+        bits.append(f"상권 흐름은 {life} 국면이라 반등 요인을 따로 봐야 한다")
+    plain = ("> 💡 **쉽게 말하면** — " + ". ".join(bits) + ".") if bits else ""
+    return summary, "\n".join(rows), plain
+
+
+def build_biz_section(biz: dict, cost: dict | None, df: pd.DataFrame,
+                      prem: dict | None) -> tuple[str, str, str]:
+    """2부 — 이 장사는 어떤 장사인가. 지역과 무관한 업종의 체질."""
+    med = df["monthly_sales_per_store"].median()
+    n = int(df["score"].notna().sum())
+
+    summary = (f"서울에서 **{biz['name']}**{_josa(biz['name'], '을/를')} 하는 상권은 {n:,}곳이고, "
+               f"점포당 월매출 중앙값은 **{med/10000:,.0f}만원**이다.")
+
+    rows = ["| 항목 | 값 | 뜻 |", "|---|---|---|",
+            f"| 서울 점포당 월매출 (중앙값) | {med/10000:,.0f}만원 | 절반은 이보다 많이, 절반은 적게 판다 |"]
+
+    if cost:
+        rows += [
+            f"| 식재료비 | 매출의 **{cost['food_cost']*100:.1f}%** | 1만원 팔면 {cost['food_cost']*10000:,.0f}원 |",
+            f"| 인건비 | 매출의 **{cost['labor_cost']*100:.1f}%** | 1만원 팔면 {cost['labor_cost']*10000:,.0f}원 |",
+            f"| 임대료 제외 원가율 | **{cost['ex_rent_cost_ratio']*100:.1f}%** | 월세 빼고 나가는 돈 |",
+            f"| **손익분기 임대료율** | **{cost['breakeven_burden']*100:.1f}%** | "
+            f"월세가 매출의 이 비율을 넘으면 적자 |",
+        ]
+    if prem and prem.get("권리금 수준_평균"):
+        rows.append(
+            f"| 권리금 (서울 평균) | {prem['권리금 수준_평균']:,.0f}만원 | "
+            f"권리금 있는 점포 {prem.get('권리금 유 비율', 0):.0f}% |"
+        )
+
+    if cost:
+        plain = (
+            f"> 💡 **쉽게 말하면** — {biz['name']}{_josa(biz['name'])} 1만원을 팔면 재료비 "
+            f"{cost['food_cost']*10000:,.0f}원, 인건비 {cost['labor_cost']*10000:,.0f}원이 나가는 장사다. "
+            f"월세가 매출의 **{cost['breakeven_burden']*100:.1f}%** 를 넘으면 평균적인 가게는 적자가 된다."
+        )
+    else:
+        plain = ("> 💡 **쉽게 말하면** — 이 업종은 외식업 경영실태 조사 대상이 아니라 "
+                 "원가 구조를 낼 수 없다. 임대료 부담률까지만 본다.")
+    return summary, "\n".join(rows), plain
+
+
+def build_cross_plain(row: pd.Series, cost: dict | None) -> str:
+    """3부 — 동네×업종 교차 결과를 한 문단으로."""
+    if pd.isna(row.get("rent_burden")) or row.get("entry_cost") == "판정보류":
+        return ("> 💡 **쉽게 말하면** — 이 상권은 임대료 실측 자료가 없어 "
+                "'얼마 남는지'까지는 계산하지 않았다. 장사가 되는지(위 등급)까지만 보면 된다.")
+    burden, be = row["rent_burden"], row.get("breakeven_burden")
+    profit = row.get("monthly_profit")
+    s = (f"> 💡 **쉽게 말하면** — 이 동네에서 이 장사를 하면 월 "
+         f"**{row['monthly_sales_per_store']/10000:,.0f}만원** 팔고 월세로 "
+         f"**{row['monthly_rent']/10000:,.0f}만원**(매출의 {burden*100:.0f}%)을 낸다.")
+    if pd.notna(profit) and pd.notna(be):
+        if burden <= be:
+            s += (f" 손익분기선이 {be*100:.0f}% 인데 그 아래라서, 평균 원가구조로 "
+                  f"월 **{profit/10000:,.0f}만원**이 남는다.")
+        else:
+            s += (f" 손익분기선 {be*100:.0f}% 를 넘어서, 평균 원가구조로는 월 "
+                  f"**{abs(profit)/10000:,.0f}만원이 모자란다.** 매출을 평균 이상으로 올리거나 "
+                  "월세를 낮춰야 한다.")
+    return s
+
+
+def build_final_summary(row: pd.Series, cost: dict | None, pol: dict | None,
+                        region: str, biz_name: str) -> str:
+    """5부 — 마지막 요약. 결론 3줄 + 다음 행동."""
+    lines = []
+    grade_word = {"A": "좋은 편", "B": "괜찮은 편", "C": "보통",
+                  "D": "아쉬운 편", "E": "어려운 편"}.get(row["grade"], "판정 불가")
+    lines.append(f"1. **{region}에서 {biz_name}은 {grade_word}다** — "
+                 f"{row['TRDAR_CD_NM']} 기준 종합 {row['grade']} 등급.")
+
+    if pd.notna(row.get("monthly_profit")):
+        p = row["monthly_profit"] / 10000
+        lines.append(f"2. **월 {p:,.0f}만원 " + ("남는" if p >= 0 else "모자라는") +
+                     f" 구조다** — 매출 {row['monthly_sales_per_store']/10000:,.0f}만원에서 "
+                     f"월세 {row['monthly_rent']/10000:,.0f}만원과 원가를 뺀 값.")
+    elif pd.notna(row.get("rent_burden")):
+        lines.append(f"2. **월세 부담률은 {row['rent_burden']*100:.0f}%** 다.")
+    else:
+        lines.append("2. **임대료 자료가 없어 수익은 계산하지 못했다.**")
+
+    n_pol = sum(len(v) for v in pol["branches"].values()) if pol else 0
+    if n_pol:
+        who = "답해주신 조건에 맞는" if (pol and pol.get("profile")) else "조건별로 나눈"
+        lines.append(f"3. **{who} 지원제도가 {n_pol}건 있다** — 마감일과 자격을 위에서 확인할 것.")
+
+    lines.append("")
+    lines.append("**다음에 할 일**")
+    todo = []
+    if pd.notna(row.get("vacancy_rate")) and row["vacancy_rate"] > 8:
+        todo.append("공실이 많은 편이니 계약 전 **임대료·렌트프리 협상**을 꼭 시도한다")
+    todo.append("위 지원제도 중 **마감이 가까운 것부터** 공고문을 열어 자격을 확인한다")
+    if row["grade"] in ("A", "B"):
+        todo.append("같은 지역의 다른 상권 매물도 함께 보고 **월세를 비교**한다")
+    else:
+        todo.append("이 상권이 어려우면 **다른 후보 상권**을 위 비교표에서 골라 다시 본다")
+    lines += [f"- {t}" for t in todo]
+    return "\n".join(lines)
+
+
 def build_region_choice(region: str, sub: pd.DataFrame, row: pd.Series) -> str:
     """지역명이 여러 상권에 걸리면 선택지를 제시한다.
 
@@ -519,6 +662,8 @@ def main() -> None:
     ap.add_argument("--trdar", help="상권명을 직접 지정 (기본값: 매출 1위)")
     ap.add_argument("--out", help="출력 경로")
     ap.add_argument("--skip-policy", action="store_true", help="정책 조회 생략 (오프라인 테스트)")
+    ap.add_argument("--profile", help="사용자 조건: 청년 최초창업 여성 장애인 (띄어쓰기로 여러 개). "
+                                      "없으면 조건별 분기를 전부 보여준다")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -557,8 +702,9 @@ def main() -> None:
     pol = None
     if not args.skip_policy:
         print("지원제도 조회 중...")
-        from match_policy import match
-        pol = match(row["SIGNGU_CD_NM"], row["TRDAR_SE_CD_NM"], cfg["report"]["top_n_policies"])
+        from match_policy import match, parse_profile
+        pol = match(row["SIGNGU_CD_NM"], row["TRDAR_SE_CD_NM"],
+                    cfg["report"]["top_n_policies"], parse_profile(args.profile))
 
     # ── Step 5. 렌더 ──
     tpl = (SKILL_ROOT / cfg["paths"]["template"]).read_text(encoding="utf-8")
@@ -566,6 +712,9 @@ def main() -> None:
     presc = rent_mod.prescribe(row["grade"], row["entry_cost"])
     prem = rent_mod.premium_for(reb, biz["code"], rent_mod.load_mapping())
     seoul_vac = df.drop_duplicates("reb_district")["vacancy_rate"].mean()
+    _cost = rent_mod.load_cost_ratio(cfg, biz["code"])
+    _area = build_area_section(row, seoul_vac, cfg)
+    _bizs = build_biz_section(biz, _cost, df, prem)
 
 
     fields = {
@@ -604,6 +753,10 @@ def main() -> None:
         "cost_summary": build_cost_summary(row, cfg),
         "candidate_summary": build_candidate_summary(args.region, sub, row),
         "policy_summary": build_policy_summary(pol),
+        "area_summary": _area[0], "area_table": _area[1], "area_plain": _area[2],
+        "biz_summary": _bizs[0], "biz_table": _bizs[1], "biz_plain": _bizs[2],
+        "cross_plain": build_cross_plain(row, _cost),
+        "final_summary": build_final_summary(row, _cost, pol, args.region, biz["name"]),
         "verdict": build_verdict(row, sub, seoul_vac, prem, pol),
         "policy_total": pol["total_fetched"] if pol else "-",
         "policy_region": pol["after_region"] if pol else "-",

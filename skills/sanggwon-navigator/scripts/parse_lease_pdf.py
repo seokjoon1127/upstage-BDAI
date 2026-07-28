@@ -50,6 +50,37 @@ def load_key(name: str = "UPSTAGE_API_KEY") -> str:
     )
 
 
+# 서울시 공정거래종합상담센터 「상가임대차 실태조사」 보고서 직링크
+PDF_URL = "https://sftc.seoul.go.kr/common/file/NR_download.do?id=212c8fa3-cc90-461f-b412-e3821e499529"
+
+
+def ensure_pdf(pdf: Path) -> Path:
+    """PDF 가 없으면 받아온다. 상권 데이터의 '캐시 없으면 수집' 규칙과 같다.
+
+    26MB 라 스킬에 넣지 않는다. 원본이 연 1회 갱신이므로 한 번 받으면 계속 쓴다.
+    """
+    if pdf.exists() and pdf.stat().st_size > 1_000_000:
+        return pdf
+
+    pdf.parent.mkdir(parents=True, exist_ok=True)
+    print(f"보고서 PDF 다운로드 중... ({pdf.name})")
+    req = urllib.request.Request(PDF_URL, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            data = resp.read()
+    except Exception as e:                                # noqa: BLE001
+        sys.exit(
+            f"PDF 다운로드 실패: {e}\n"
+            f"직접 받아서 {pdf} 로 저장한 뒤 다시 실행하세요.\n"
+            "출처: 서울시 공정거래종합상담센터 https://sftc.seoul.go.kr/fe/bbs/NR_list.do?bbsCd=6&ctgCd=2"
+        )
+    if not data.startswith(b"%PDF"):
+        sys.exit("받은 파일이 PDF 가 아닙니다. 원본 링크가 바뀌었을 수 있습니다.")
+    pdf.write_bytes(data)
+    print(f"  {len(data) / 1024 / 1024:.1f}MB 저장 완료")
+    return pdf
+
+
 def extract_page(pdf: Path, page_no: int) -> Path:
     """해당 쪽만 단일 PDF 로 잘라낸다. 통째로 보내면 크레딧이 78배 든다."""
     from pypdf import PdfReader, PdfWriter
@@ -111,6 +142,9 @@ PROMPT = """다음은 서울시 상가임대차 실태조사 보고서에서 OCR
 
 이 표에서 **상권별 통상임대료**만 정확히 골라내라.
 
+원본 표에는 **약 140개 상권**이 있다. 최대한 빠짐없이 뽑아라.
+표는 좌우로 5개 블록이 나란히 있으니 **모든 블록을 끝까지 훑어라.**
+
 규칙:
 - 각 항목은 (상권명, 평균, 중위수) 세 값이다. 단위는 만원/㎡.
 - 자치구 이름(예: "강남구 8.58")은 상권이 아니라 그 구의 평균이다. 제외한다.
@@ -162,17 +196,45 @@ def structure_with_solar(markdown: str, key: str) -> list[dict]:
     return clean
 
 
+def merge_rounds(rounds: list[list[dict]]) -> list[dict]:
+    """여러 번 파싱한 결과를 합친다.
+
+    LLM 은 값을 틀리게 읽지는 않지만 **일부를 빠뜨린다.** 같은 입력을 세 번 돌리면
+    125 / 111 / 117 개처럼 건수가 흔들린다. 그래서 합집합을 취해 커버리지를 채우고,
+    값이 엇갈리는 상권은 다수결로 정한다. 표가 있는 쪽 하나만 보내므로 비용도 작다.
+    """
+    from collections import Counter, defaultdict
+
+    votes: dict[str, Counter] = defaultdict(Counter)
+    for rows in rounds:
+        for r in rows:
+            name = str(r.get("상권명", "")).strip()
+            if name:
+                votes[name][round(float(r["평균"]), 2)] += 1
+
+    merged, disputed = [], 0
+    for name, counter in votes.items():
+        (val, n), = counter.most_common(1)
+        if len(counter) > 1:
+            disputed += 1
+        merged.append({"상권명": name, "평균": val, "표본": n})
+
+    merged.sort(key=lambda r: r["상권명"])
+    each = " / ".join(str(len(r)) for r in rounds)
+    print(f"  {len(rounds)}회 병합: {each} → **{len(merged)}개** (값 불일치 {disputed}건은 다수결)")
+    return merged
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="스캔 PDF에서 상권별 임대료 표 추출")
     ap.add_argument("--pdf", default="data/raw/seoul_lease_2022.pdf")
     ap.add_argument("--page", type=int, default=22, help="표가 있는 쪽 번호 (1부터)")
     ap.add_argument("--out", default="data/raw/seoul_lease_parsed.json")
+    ap.add_argument("--rounds", type=int, default=3,
+                    help="Solar 정형화 반복 횟수. 누락을 메우려 합집합을 취한다")
     args = ap.parse_args()
 
-    pdf = SKILL_ROOT / args.pdf
-    if not pdf.exists():
-        sys.exit(f"{pdf} 가 없습니다.")
-
+    pdf = ensure_pdf(SKILL_ROOT / args.pdf)
     page_pdf = extract_page(pdf, args.page)
     print(f"입력: {page_pdf.name} ({page_pdf.stat().st_size / 1024:.0f}KB, {args.page}쪽)")
 
@@ -188,19 +250,21 @@ def main() -> None:
     md = content.get("markdown", "")
     print(f"  markdown {len(md):,}자 / 요소 {len(result.get('elements', []))}개")
 
-    print("Solar 로 표 정형화 중...")
-    rows = structure_with_solar(md, load_key())
+    print(f"Solar 로 표 정형화 중... ({args.rounds}회 반복)")
+    key = load_key()
+    rounds = [structure_with_solar(md, key) for _ in range(args.rounds)]
+    rows = merge_rounds(rounds)
 
     import csv
     csv_path = SKILL_ROOT / "reference" / "seoul_lease_districts.csv"
     with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["상권명", "평균", "중위수"])
+        w = csv.DictWriter(f, fieldnames=["상권명", "평균", "표본"])
         w.writeheader()
-        w.writerows({k: r.get(k) for k in ("상권명", "평균", "중위수")} for r in rows)
+        w.writerows(rows)
 
     print(f"→ {csv_path}  ({len(rows)}개 상권)")
     for r in rows[:5]:
-        print(f"    {r['상권명']:<22} 평균 {r['평균']:>6} · 중위 {r.get('중위수')}")
+        print(f"    {r['상권명']:<22} 평균 {r['평균']:>6}  ({r['표본']}/{args.rounds}회 일치)")
 
 
 if __name__ == "__main__":

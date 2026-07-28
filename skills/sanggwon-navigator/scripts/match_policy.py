@@ -206,7 +206,35 @@ def sort_key(p: dict, kw: dict) -> tuple:
 
 # ── 메인 ───────────────────────────────────────────────────────
 
-def match(district: str, zone_type: str | None = None, top_n: int = 10) -> dict:
+PROFILE_BRANCH = {
+    "청년": "age_youth",
+    "최초창업": "first_time_founder",
+    "재도전": "first_time_founder",
+    "여성": "female",
+    "장애인": "disabled_or_veteran",
+    "보훈": "disabled_or_veteran",
+}
+
+
+def parse_profile(raw: str | None) -> set[str]:
+    """사용자 답변을 분기 이름으로 옮긴다.
+
+    답이 없으면 빈 집합 → 조건별 분기를 전부 보여준다(기존 동작).
+    답이 있으면 해당 분기 + 무조건 분기만 남긴다.
+    """
+    if not raw:
+        return set()
+    out = set()
+    for token in raw.replace(",", " ").split():
+        key = token.strip()
+        for word, branch in PROFILE_BRANCH.items():
+            if word in key:
+                out.add(branch)
+    return out
+
+
+def match(district: str, zone_type: str | None = None, top_n: int = 10,
+          profile: set[str] | None = None) -> dict:
     kw = load_yaml(SKILL_ROOT / "reference" / "policy_keywords.yaml")
     cfg = load_yaml(SKILL_ROOT / "config" / "defaults.yaml")
 
@@ -223,9 +251,16 @@ def match(district: str, zone_type: str | None = None, top_n: int = 10) -> dict:
     for name in branches:
         branches[name] = sorted(branches[name], key=lambda p: sort_key(p, kw))[:top_n]
 
+    # 프로필을 받았으면 해당 분기 + 무조건 분기만 남긴다.
+    # 답이 없으면 전부 보여준다 — 질문에 답하지 않아도 리포트가 완결되어야 하므로.
+    if profile:
+        branches = {k: v for k, v in branches.items()
+                    if k == "unconditional" or k in profile}
+
     return {
         "district": district,
         "zone_type": zone_type,
+        "profile": sorted(profile) if profile else [],
         "as_of": datetime.now().strftime("%Y-%m-%d"),
         "source": SOURCE,
         "total_fetched": len(raw),
@@ -241,9 +276,10 @@ def main() -> None:
     ap.add_argument("--district", required=True, help="자치구 (예: 성동구)")
     ap.add_argument("--zone", help="상권 구분 (예: 전통시장)")
     ap.add_argument("--top", type=int, default=10)
+    ap.add_argument("--profile", help="청년 최초창업 여성 장애인 (띄어쓰기로 여러 개)")
     args = ap.parse_args()
 
-    r = match(args.district, args.zone, args.top)
+    r = match(args.district, args.zone, args.top, parse_profile(args.profile))
     print(f"기준일 {r['as_of']} · 출처 {r['source']}")
     print(f"전체 {r['total_fetched']}건 → 지역 {r['after_region']}건 → 관련 {r['after_relevance']}건 (접수중)\n")
 

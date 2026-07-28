@@ -12,7 +12,7 @@
 |  |  |
 |---|---|
 | **어디** | {{trdar_name}} ({{trdar_type}}, {{district}}) |
-| **장사가 되나** | **{{grade}}** — 서울 {{biz_name}} 상권 {{population}}곳 중 **상위 {{rank_pct}}%** |
+| **종합 등급** | **{{grade}}** — 서울 {{biz_name}} 상권 {{population}}곳 중 **상위 {{rank_pct}}%** |
 | **얼마나 드나** | {{cost_grade}} |
 | **처방** | {{prescription}} |
 
@@ -20,7 +20,29 @@
 
 ---
 
-## 1. 얼마나 벌 수 있나
+## 1. 이 동네는 어떤 곳인가
+
+{{area_summary}}
+
+{{area_table}}
+
+{{area_plain}}
+
+---
+
+## 2. 이 장사는 어떤 장사인가
+
+{{biz_summary}}
+
+{{biz_table}}
+
+{{biz_plain}}
+
+---
+
+## 3. 이 동네에서 이 장사를 하면
+
+여기서 **동네 데이터와 업종 데이터가 만난다.** 등급도 여기서 나온다.
 
 {{power_summary}}
 
@@ -30,17 +52,11 @@
 
 {{demotion_note}}
 
----
-
-## 2. 얼마가 나가나
-
-{{cost_summary}}
-
 {{cost_section}}
 
----
+{{cross_plain}}
 
-## 3. 어디가 제일 나은가
+### 같은 이름의 다른 상권과 비교하면
 
 {{candidate_summary}}
 
@@ -50,11 +66,17 @@
 
 ---
 
-## 4. 얼마를 받을 수 있나
+## 4. 받을 수 있는 지원제도
 
 {{policy_summary}}
 
 {{policy_section}}
+
+---
+
+## 5. 요약
+
+{{final_summary}}
 
 ---
 
