@@ -204,16 +204,21 @@ python scripts/make_report.py --region 성수동 --biz 카페
 
 | 도구 | 어디에 |
 |---|---|
-| **Upstage Document Parse** | 서울시 상가임대차 실태조사 스캔 PDF(78쪽, 텍스트 0자)에서 140개 상권 임대료 표 추출 |
+| **Upstage Document Parse** | 서울시 상가임대차 실태조사 스캔 PDF(전 쪽 이미지, 텍스트 0자)에서 145개 주요상권 임대료 표 추출. 표가 몇 쪽에 있는지도 이걸로 찾는다 |
 | **Upstage Solar** (`solar-pro2`) | Document Parse 가 뽑은 표는 5블록 병합이라 셀 정렬이 깨진다. 이를 JSON 으로 정형화 |
 
 ```bash
-python scripts/parse_lease_pdf.py --pdf data/raw/seoul_lease_2022.pdf --page 22
+python scripts/parse_lease_pdf.py --check     # 새 조사 떴는지만 확인 (크레딧 0)
+python scripts/parse_lease_pdf.py             # 최신본 받아서 파싱 → CSV 갱신
 ```
 
-원본이 연 1회 갱신이라 매 실행마다 호출하지 않는다.
-결과는 `reference/seoul_lease_districts.csv` 로 저장해 두고 쓰며,
-새 보고서가 나오면 스크립트를 다시 돌린다. `UPSTAGE_API_KEY` 가 필요하다.
+**원본 주소도 쪽 번호도 코드에 박아두지 않는다.** 자료실에서 그때그때 가장 최신
+보고서를 찾고, 표가 있는 쪽은 몇 쪽씩 던져보며 찾는다. 발행 주기가 불규칙해
+(2015·2017 → 2019 → 2022 → 2023) 갱신 시점을 예측할 수 없기 때문이다.
+
+지금 쓰는 회차는 `reference/seoul_lease_source.json` 에 적혀 있고, 게시글 번호를
+비교해 새 조사가 떴을 때만 다시 파싱한다. **확인은 무료, 파싱만 크레딧을 쓴다.**
+결과는 `reference/seoul_lease_districts.csv` 에 들어간다. `UPSTAGE_API_KEY` 가 필요하다.
 
 ---
 

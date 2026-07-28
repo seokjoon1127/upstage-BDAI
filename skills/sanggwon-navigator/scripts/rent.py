@@ -166,11 +166,12 @@ def ensure(cfg: dict, refresh: bool = False) -> dict:
 def load_seoul_lease() -> dict[str, float]:
     """서울시 상가임대차 실태조사 — 상권별 실측 통상임대료 (만원/㎡·월).
 
-    부동산원은 서울 주요상권 59곳만 조사하지만, 이 자료는 140개 상권
+    부동산원은 서울 주요상권 59곳만 조사하지만, 이 자료는 145개 주요상권
     1층 점포 12,531개를 실측했다. 골목 안쪽까지 훨씬 촘촘하다.
 
     원본이 스캔 이미지 PDF라 Document Parse + Solar 로 뽑았다.
-    (scripts/parse_lease_pdf.py) 평균값만 쓴다 — 중위수는 OCR 정렬 오류가 섞여 있다.
+    (scripts/parse_lease_pdf.py) 어느 회차를 썼는지는 reference/seoul_lease_source.json
+    에 적혀 있고, 새 회차가 올라오면 그 스크립트가 알아서 갈아끼운다.
 
     ※ 통상임대료 = 보증금×12%/12 + 월세 + 공용관리비.
        순수 월세인 부동산원 값보다 크며, 실제 부담에 더 가깝다.
@@ -289,7 +290,7 @@ def attach(df: pd.DataFrame, cfg: dict, reb: dict, biz_code: str | None = None) 
         nm, reason = match_reb_district(trdar, row.get("SIGNGU_CD_NM"), mapping, available)
         vac_v.append(vac_by.get(nm, seoul_vac_avg) if nm else seoul_vac_avg)
 
-        # 임대료는 서울시 실측(140개 상권)을 우선한다. 없으면 부동산원(59개)으로 폴백.
+        # 임대료는 서울시 실측(145개 주요상권)을 우선한다. 없으면 부동산원(59개)으로 폴백.
         s_rent, s_nm = match_seoul_lease(trdar, seoul_tbl)
         if s_rent is not None:
             matched.append(s_nm)
