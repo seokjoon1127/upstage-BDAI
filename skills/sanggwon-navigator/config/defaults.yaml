@@ -1,0 +1,100 @@
+# 상권 내비게이터 — 실행 설정
+#
+# 원칙: 경로·가중치·컷오프를 코드에 하드코딩하지 않는다. 스크립트는 전부 여기서 읽는다.
+# 숫자의 "왜"는 reference/scoring_rules.md 에 산문으로 적는다. 이 파일은 값만 둔다.
+
+paths:
+  cache_dir: data/cache
+  template: templates/analysis-report.md
+  output_dir: output
+
+# ── 데이터 신선도 ──────────────────────────────────────────────
+# 캐시에는 "어느 분기 데이터인지" 스탬프가 박힌다.
+# 최신 분기와 이 값 이상 벌어지면 자동으로 다시 받는다. 캐시가 없으면 그냥 받는다.
+freshness:
+  max_age_quarters: 1
+
+# ── 데이터 소스 ────────────────────────────────────────────────
+# key_env 에는 키 값이 아니라 "환경변수 이름"만 둔다.
+sources:
+  seoul_commerce:                       # 서울 열린데이터광장 — 상권 진단
+    base_url: "http://openapi.seoul.go.kr:8088"
+    key_env: SEOUL_API_KEY
+    page_size: 1000                     # API 1회 호출 최대 건수
+    refresh: quarterly
+
+  reb_rent:                             # 한국부동산원 — 임대료·공실률
+    key_env: null                       # 파일데이터 다운로드라 키 불필요
+    store_type: 소규모상가               # 소상공인 창업 기준. 중대형상가/집합상가로 교체 가능
+    refresh: quarterly
+
+# ── 축 1: 상권력 (A~E) ─────────────────────────────────────────
+# 각 지표를 서울 전체 상권 분포 대비 백분위로 환산한 뒤 가중합.
+# 백분위 모집단은 항상 "지역 단위"로 산정한다 (전국 확장 시 왜곡 방지).
+commercial_power:
+  weights:
+    sales_growth: 0.25                  # 전년 동분기 대비 매출 성장률
+    footfall_conversion: 0.20           # 유동인구 대비 매출 전환율
+    competition_density: 0.20           # 동일 업종 점포수 / 유동인구  (낮을수록 좋음)
+    survival_signal: 0.25               # 개업률 − 폐업률
+    lifecycle: 0.10                     # 상권변화지표 교차 검증
+  reverse_metrics:                      # 값이 낮을수록 좋은 지표
+    - competition_density
+  # 상권변화지표(4종)를 점수로 환산. 근거는 reference/scoring_rules.md 참조.
+  # 실측 확인: HH=정체, LL=다이나믹, HL=상권축소, LH=상권확장
+  lifecycle_scores:
+    상권확장: 1.00
+    다이나믹: 0.66
+    정체: 0.33
+    상권축소: 0.00
+  # 지표가 이 비율 미만만 남으면 등급을 내지 않고 "판정 불가"로 보고한다
+  min_weight_coverage: 0.5
+  # 표본이 부족한 상권은 등급을 내지 않는다. 허수 성장률(전년 300만원→올해 4600만원=1601%) 차단.
+  sample_gate:
+    min_stores: 3                 # 동일 업종 점포 수가 이보다 적으면 "표본부족"
+    growth_base_min_ratio: 0.5    # 전년 매출이 업종 중앙값의 이 비율 미만이면 성장률 산출 제외
+  # 백분위 산정 전 상·하위 극단값을 잘라낸다.
+  # 순위는 극단값을 그대로 1등으로 보내므로, 1081% 성장이 100% 성장과 같은 취급을 받게 한다.
+  winsorize: 0.05
+  grade_cutoffs:                        # 백분위 상위 % 경계
+    A: 80
+    B: 60
+    C: 40
+    D: 20
+  # 다른 지표가 아무리 좋아도 강등시키는 규칙
+  demotion_rules:
+    - metric: closure_rate
+      condition: "서울 평균의 1.5배 이상"
+      max_grade: C
+
+# ── 축 2: 진입비용 (저/중/고) ──────────────────────────────────
+# 상권력과 합산하지 않는다. 합치면 "매출이 좋아서 B" 인지
+# "월세가 싸서 B" 인지 구분이 사라진다.
+entry_cost:
+  metric: rent_burden_ratio             # 월 임대료 ÷ 점포당 월 평균매출
+  # 저/중 경계 = 서울 145개 주요상권 1층 점포 12,531개 실측 평균 (서울시 2023 상가임대차 실태조사)
+  low_max: 0.16
+  # 중/고 경계 = 업종별 손익분기 임대료율 (100% - 임대료제외 원가율, KREI 조사에서 산출)
+  high_from: breakeven
+  # 서울시 조사 1층 점포 평균 전용면적. 근거는 reference/cost_structure.md 4절.
+  assumed_area_sqm: 60.2
+  # 부담률이 이보다 크면 자치구 평균 임대료의 과대적용이므로 판정을 보류한다
+  max_valid_burden: 0.50
+  vacancy_as_comment: true              # 공실률은 등급이 아니라 협상 여지 코멘트로만
+
+# ── 손익 추정 ──────────────────────────────────────────────────
+# 원가율은 reference/cost_structure.md 에 업종별 출처와 함께 기재한다.
+profit:
+  enabled: true
+  cost_table: reference/krei_cost_ratio_2024.csv    # KREI 외식업 경영실태조사 (임차료 분리)
+  # 외식업 10종만 커버한다. 그 밖 업종은 영업이익을 내지 않고 부담률까지만 낸다.
+  # 사용자가 창업자금을 말하지 않았을 때의 참고값 (서울시 조사 점포당 평균, 원)
+  initial_investment_default: 170000000
+
+# ── 정책 매칭 ──────────────────────────────────────────────────
+policy:
+  only_open: true                       # 오늘 기준 접수 중인 건만
+
+# ── 리포트 ─────────────────────────────────────────────────────
+report:
+  top_n_policies: 10

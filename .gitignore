@@ -1,0 +1,27 @@
+# 절대 커밋 금지 — API 키 (대회 보안 서약)
+.env
+.env.local
+
+# 데이터 (원본·캐시는 스크립트가 생성한다)
+skills/sanggwon-navigator/data/raw/
+skills/sanggwon-navigator/data/cache/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ── 공개 저장소 제외 (보안 서약) ──────────────────────
+# 키 원본 메모
+공공api모음집.txt
+*.env
+# 크레딧 쿠폰 코드 포함 문서 (공개 저장소 커밋 금지 조항)
+CLAUDE.md
+PROJECT.md
+# 플랫폼 내부 기능 명세
+Timely*.md
+# 빌드 산출물·생성 리포트
+dist/
+build/
+skills/sanggwon-navigator/output/
