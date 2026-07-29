@@ -74,12 +74,27 @@ python scripts/make_report.py --region 성수동 --biz 카페 --profile "청년 
 
 ```bash
 cd <스킬 폴더>
-pip install pandas pyarrow pyyaml     # 없을 때만
+# 없을 때만. 외부 관리 환경이면 첫 줄이 막히므로 둘째 줄로 간다.
+pip install pandas pyarrow pyyaml || pip install --break-system-packages pandas pyarrow pyyaml
 python scripts/make_report.py --region 성수동 --biz 카페
 ```
 
-캐시가 없거나 낡았으면 데이터를 자동으로 받는다(약 2분). 사람이 개입하지 않는다.
+캐시가 없거나 낡았으면 데이터를 자동으로 받는다. 사람이 개입하지 않는다.
 상권을 직접 고르려면 `--trdar 성수동카페거리`, 네트워크가 막히면 `--skip-policy`.
+
+#### ⏱️ 첫 실행이 타임아웃되면 — **그냥 다시 실행한다**
+
+첫 수집은 20만 행이라 실행 환경의 명령 타임아웃(예: 180초)에 걸릴 수 있다.
+**이건 실패가 아니다.** 분기 하나를 받을 때마다 저장하므로 받은 만큼은 남는다.
+
+```bash
+python scripts/fetch_data.py     # 타임아웃 → 다시 실행 → 이어받음 (보통 2~3회)
+python scripts/fetch_data.py --status
+```
+
+`--status` 가 **미완료**라고 하면 같은 명령을 다시 친다. 이미 받은 것은 건너뛰므로
+매번 빨라지고, 다 받으면 0초에 끝난다. 처음부터 다시 받지 않는다.
+**타임아웃을 에러로 보고하지 말고 재실행하라.**
 
 산출물: `output/<지역>_<업종>_<분기>.md`
 

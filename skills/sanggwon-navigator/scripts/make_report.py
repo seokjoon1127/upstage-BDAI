@@ -365,8 +365,8 @@ def build_region_choice(region: str, sub: pd.DataFrame, row: pd.Series) -> str:
             break
 
     lines = [
-        f'> ❓ **"{region}" 은 상권이 {len(sub)}곳으로 갈립니다.** '
-        f"매출이 가장 큰 **{row['TRDAR_CD_NM']}** 기준으로 봤습니다.",
+        f'> ❓ **"{region}"{_josa(region)} 상권이 {len(sub)}곳으로 갈립니다.** '
+        f"상권 전체 매출이 가장 큰 **{row['TRDAR_CD_NM']}** 기준으로 봤습니다.",
         ">",
     ]
     for i, r in enumerate(picks, 1):
@@ -540,7 +540,7 @@ def build_region_note(region: str, sub: pd.DataFrame, row: pd.Series) -> str:
         return ""
     others = [g for g in gus if g != row["SIGNGU_CD_NM"]]
     return (
-        f'> ⚠️ **"{region}" 은 {", ".join(gus)} 여러 자치구에 걸쳐 있습니다.**\n'
+        f'> ⚠️ **"{region}"{_josa(region)} {", ".join(gus)} 여러 자치구에 걸쳐 있습니다.**\n'
         f"> 매출 규모가 가장 큰 **{row['SIGNGU_CD_NM']} {row['TRDAR_CD_NM']}** 기준으로 진단했습니다.\n"
         f'> 다른 쪽을 보시려면 `"{others[0]} {region}"` 처럼 자치구를 함께 적어주세요.'
     )

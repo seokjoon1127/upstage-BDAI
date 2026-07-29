@@ -134,12 +134,14 @@ def fetch_all(key: str, service: str, quarter: str | None, page: int) -> list[di
         chunk = payload.get("row") or []
         if not chunk:
             break
+        prev = len(rows)
         rows.extend(chunk)
-        print(f"\r    {len(rows):,} / {total:,}", end="", flush=True)
+        # 1,000건마다 찍으면 로그가 수백 줄이 된다. \r 를 안 먹는 실행 환경도 있다.
+        if len(rows) // 10_000 != prev // 10_000:
+            print(f"      {len(rows):,} / {total:,}", flush=True)
         if len(rows) >= total:
             break
         start += page
-    print()
     return rows
 
 
@@ -178,6 +180,9 @@ def is_stale(meta: dict | None, latest: str, max_age: int) -> tuple[bool, str]:
     cached = meta.get("latest_quarter")
     if not cached:
         return True, "스탬프 없음"
+    if not meta.get("complete", True):
+        n, total = len(meta.get("datasets", {})), len(DATASETS)
+        return True, f"수집이 중단됨 ({n}/{total}) — 이어받기"
     gap = quarter_distance(latest, cached)
     if gap > max_age:
         return True, f"{gap}개 분기 경과 (캐시 {cached} / 최신 {latest})"
@@ -186,13 +191,24 @@ def is_stale(meta: dict | None, latest: str, max_age: int) -> tuple[bool, str]:
 
 # ── 메인 ───────────────────────────────────────────────────────
 
-def collect(cfg: dict, key: str, latest: str) -> dict:
+def collect(cfg: dict, key: str, latest: str, refresh: bool = False) -> dict:
+    """상권 데이터를 받아 캐시로 만든다. **중단되면 이어받는다.**
+
+    매출 데이터만 5개 분기 26MB라 전체 수집이 2분 넘게 걸린다. 실행 환경에
+    명령 타임아웃이 있으면(Timely 는 180초) 통째로 받다가 죽고, 다음 실행에서
+    처음부터 다시 받게 된다. 영원히 못 끝난다.
+
+    그래서 **분기 하나를 받을 때마다 조각으로 저장**한다. 죽어도 받은 만큼은
+    남고, 다시 실행하면 없는 조각부터 이어받는다. 한 데이터셋의 조각이 다
+    모이면 하나로 합치고 조각을 지운다.
+    """
     page = cfg["sources"]["seoul_commerce"]["page_size"]
     out = cache_dir(cfg)
     summary = {}
+    todo = []
 
     for name, spec in DATASETS.items():
-        print(f"  [{spec['label']}]")
+        final = out / f"{name}.parquet"
         quarters = [None]
         if spec["quarters"]:
             quarters = []
@@ -201,36 +217,63 @@ def collect(cfg: dict, key: str, latest: str) -> dict:
                 quarters.append(q)
                 q = prev_quarter(q)
 
-        rows: list[dict] = []
-        for q in quarters:
-            if q:
-                print(f"    분기 {q}")
-            rows.extend(fetch_all(key, spec["service"], q, page))
-
-        if not rows:
-            print("    ⚠️ 빈 결과 — 건너뜀")
+        if final.exists() and not refresh:
+            import pyarrow.parquet as pq          # 26MB 를 다 읽지 않고 행 수만 본다
+            summary[name] = {
+                "service": spec["service"], "label": spec["label"],
+                "rows": pq.ParquetFile(final).metadata.num_rows,
+                "quarters": [q for q in quarters if q],
+            }
+            print(f"  [{spec['label']}] 이미 있음 — 건너뜀")
             continue
 
-        df = pd.DataFrame(rows)
-        df.to_parquet(out / f"{name}.parquet", index=False)
-        summary[name] = {
-            "service": spec["service"],
-            "label": spec["label"],
-            "rows": len(df),
-            "quarters": [q for q in quarters if q],
-        }
-        print(f"    저장 {len(df):,} 행 → {name}.parquet")
+        print(f"  [{spec['label']}]")
+        shards = []
+        for q in quarters:
+            shard = out / f"_{name}__{q or 'all'}.parquet"
+            if shard.exists() and not refresh:
+                print(f"    분기 {q or '-'} 이미 있음")
+                shards.append(shard)
+                continue
+            print(f"    분기 {q or '-'} 수집 중...", flush=True)
+            rows = fetch_all(key, spec["service"], q, page)
+            if not rows:
+                print("      ⚠️ 빈 결과")
+                continue
+            pd.DataFrame(rows).to_parquet(shard, index=False)
+            print(f"      {len(rows):,} 행 저장", flush=True)
+            shards.append(shard)
 
+        if not shards:
+            print("    ⚠️ 받은 게 없어 건너뜀")
+            todo.append(spec["label"])
+            continue
+
+        df = pd.concat([pd.read_parquet(s) for s in shards], ignore_index=True)
+        df.to_parquet(final, index=False)
+        for s in shards:
+            s.unlink(missing_ok=True)
+        summary[name] = {
+            "service": spec["service"], "label": spec["label"],
+            "rows": len(df), "quarters": [q for q in quarters if q],
+        }
+        print(f"    합쳐서 {len(df):,} 행 → {name}.parquet")
+
+    done = len(summary) == len(DATASETS)
     meta = {
         "latest_quarter": latest,
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
         "source": SOURCE,
         "license": LICENSE,
+        "complete": done,
         "datasets": summary,
     }
     (out / "_meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    if not done:
+        print(f"\n⚠️ {len(summary)}/{len(DATASETS)} 완료. 남은 것: {', '.join(todo) or '중단됨'}")
+        print("   같은 명령을 다시 실행하면 **이어서** 받습니다.")
     return meta
 
 
@@ -253,6 +296,10 @@ def main() -> None:
         for name, info in meta["datasets"].items():
             qs = ", ".join(info["quarters"]) if info["quarters"] else "-"
             print(f"  {info['label']:<16} {info['rows']:>8,} 행   [{qs}]")
+        if not meta.get("complete", True):
+            missing = [s["label"] for n, s in DATASETS.items() if n not in meta["datasets"]]
+            print(f"\n⚠️ 미완료 — 남은 것: {', '.join(missing)}")
+            print("   `python scripts/fetch_data.py` 를 다시 실행하면 이어받습니다.")
         return
 
     key = load_key()
@@ -267,8 +314,9 @@ def main() -> None:
 
     print(f"수집 시작 ({'강제 재수집' if args.refresh else reason})\n")
     t0 = time.time()
-    meta = collect(cfg, key, latest)
-    print(f"\n완료 — {time.time() - t0:.1f}초, 기준 분기 {meta['latest_quarter']}")
+    meta = collect(cfg, key, latest, refresh=args.refresh)
+    tag = "완료" if meta.get("complete") else "여기까지"
+    print(f"\n{tag} — {time.time() - t0:.1f}초, 기준 분기 {meta['latest_quarter']}")
 
 
 if __name__ == "__main__":
