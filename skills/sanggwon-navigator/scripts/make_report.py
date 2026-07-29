@@ -92,7 +92,9 @@ def build_candidate_table(sub: pd.DataFrame, target: str, min_sales: float = 3_0
     점포당 월매출이 300만원도 안 되는 상권은 임대료도 못 내는 수준이라
     창업 후보가 되지 못한다. 표에서 빼고 몇 개를 뺐는지만 알린다.
     """
-    keep = sub[sub["monthly_sales_per_store"].fillna(0) >= min_sales]
+    # "매출 순으로 정렬했다"고 안내하므로 여기서 실제로 정렬한다
+    keep = (sub[sub["monthly_sales_per_store"].fillna(0) >= min_sales]
+            .sort_values("monthly_sales_per_store", ascending=False))
     dropped = len(sub) - len(keep)
 
     head = ("| 상권 | 구분 | 상권력 | 점포당 월매출 | 임대료 부담률 | 폐업률 |\n"
@@ -303,9 +305,10 @@ def build_final_summary(row: pd.Series, cost: dict | None, pol: dict | None,
                         region: str, biz_name: str) -> str:
     """5부 — 마지막 요약. 결론 3줄 + 다음 행동."""
     lines = []
-    grade_word = {"A": "좋은 편", "B": "괜찮은 편", "C": "보통",
-                  "D": "아쉬운 편", "E": "어려운 편"}.get(row["grade"], "판정 불가")
-    lines.append(f"1. **{region}에서 {biz_name}은 {grade_word}다** — "
+    # 서술어를 통째로 넣는다. "편" 뒤에 "다"를 붙이면 "괜찮은 편다"가 된다.
+    grade_word = {"A": "좋은 편이다", "B": "괜찮은 편이다", "C": "보통이다",
+                  "D": "아쉬운 편이다", "E": "어려운 편이다"}.get(row["grade"], "판정하기 어렵다")
+    lines.append(f"1. **{region}에서 {biz_name}{_josa(biz_name)} {grade_word}** — "
                  f"{row['TRDAR_CD_NM']} 기준 종합 {row['grade']} 등급.")
 
     if pd.notna(row.get("monthly_profit")):
