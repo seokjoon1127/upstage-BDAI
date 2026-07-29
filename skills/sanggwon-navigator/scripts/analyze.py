@@ -48,12 +48,25 @@ def load_service_codes() -> dict:
 
 def load_cache(cfg: dict) -> dict:
     cache = SKILL_ROOT / cfg["paths"]["cache_dir"]
+
+    # 캐시가 비었으면 스킬에 동봉된 것을 깔고 진행한다. 첫 질문에 2~3분씩
+    # 기다리게 하지 않기 위해서다. 낡았으면 fetch_data 가 알아서 새로 받는다.
+    try:
+        from fetch_data import seed_from_bundle
+        seed_from_bundle(cfg)
+    except Exception:                                     # noqa: BLE001
+        pass
+
     meta_path = cache / "_meta.json"
     if not meta_path.exists():
         sys.exit("캐시가 없습니다. 먼저 python scripts/fetch_data.py 를 실행하세요.")
     data = {"_meta": json.loads(meta_path.read_text(encoding="utf-8"))}
     for name in ("area", "sales", "store", "footfall", "change"):
-        data[name] = pd.read_parquet(cache / f"{name}.parquet")
+        p = cache / f"{name}.parquet"
+        if not p.exists():
+            sys.exit(f"캐시에 {name}.parquet 이 없습니다. "
+                     "python scripts/fetch_data.py 를 실행하세요 (이어받습니다).")
+        data[name] = pd.read_parquet(p)
     return data
 
 

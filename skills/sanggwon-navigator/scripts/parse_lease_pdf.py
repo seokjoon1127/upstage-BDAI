@@ -74,6 +74,7 @@ UA = {"User-Agent": "Mozilla/5.0", "Referer": BOARD}
 
 STAMP = SKILL_ROOT / "reference" / "seoul_lease_source.json"
 CHECK_INTERVAL_DAYS = 7          # 매번 두드리지 않는다. 리포트를 열 번 뽑아도 확인은 주 1회.
+CHECK_TIMEOUT = 5                # 최신 여부 확인 때문에 리포트가 오래 붙잡히면 안 된다.
 
 
 def _title_year(title: str) -> int:
@@ -95,7 +96,7 @@ def find_latest_report() -> dict:
     html = ""
     for page in (1, 2):
         req = urllib.request.Request(f"{BOARD}&pageIndex={page}", headers=UA)
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=CHECK_TIMEOUT) as resp:
             html += resp.read().decode("utf-8", "replace")
 
     posts = []
@@ -118,7 +119,7 @@ def _download_url(bbs_id: str) -> str:
 
     data = urllib.parse.urlencode({"bbsCd": "2", "ctgCd": "4", "bbsSeq": bbs_id}).encode()
     req = urllib.request.Request(BOARD_VIEW, data=data, headers=UA)
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(req, timeout=CHECK_TIMEOUT) as resp:
         html = resp.read().decode("utf-8", "replace")
     m = re.search(r"NR_download\.do\?id=([0-9a-f-]{36})", html)
     if not m:

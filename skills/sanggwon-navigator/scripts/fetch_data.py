@@ -174,9 +174,55 @@ def read_meta(cfg: dict) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def is_stale(meta: dict | None, latest: str, max_age: int) -> tuple[bool, str]:
+BUNDLE = SKILL_ROOT / "bundled-cache"
+
+
+def seed_from_bundle(cfg: dict) -> bool:
+    """캐시가 비었으면 스킬에 동봉된 캐시를 깔아준다.
+
+    서울 API 는 20만 행이라 처음 받는 데 2~3분 걸린다. 실행 환경에 명령
+    타임아웃이 있으면 첫 질문에 답을 못 한다. 그래서 **쓰는 컬럼만 추린
+    캐시**(55컬럼 중 8컬럼, 25MB → 1.6MB)를 스킬에 넣어 즉시 돌게 한다.
+
+    화석이 되지는 않는다. 분기 스탬프가 그대로 붙어 있어서, 다음 분기가
+    되면 평소처럼 API 로 새로 받는다.
+    """
+    import shutil
+
+    out = cache_dir(cfg)
+    if (out / "_meta.json").exists() and not missing_files(cfg):
+        return False
+    if not BUNDLE.exists():
+        return False
+
+    out.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for f in BUNDLE.iterdir():
+        if f.is_file() and not (out / f.name).exists():
+            shutil.copy2(f, out / f.name)
+            n += 1
+    if n:
+        print(f"동봉된 캐시를 깔았습니다 ({n}개 파일). API 수집 없이 바로 씁니다.")
+    return bool(n)
+
+
+def missing_files(cfg: dict) -> list[str]:
+    """스탬프가 뭐라 하든 **실제 parquet 이 있는지** 본다.
+
+    _meta.json 만 믿으면 파일이 지워졌는데도 "최신"이라고 답한다. 실제로
+    그 일이 났고, 상태 조회를 믿은 에이전트가 캐시를 통째로 지워버렸다.
+    """
+    out = cache_dir(cfg)
+    return [s["label"] for n, s in DATASETS.items() if not (out / f"{n}.parquet").exists()]
+
+
+def is_stale(meta: dict | None, latest: str, max_age: int, cfg: dict | None = None) -> tuple[bool, str]:
     if meta is None:
         return True, "캐시 없음"
+    if cfg is not None:
+        gone = missing_files(cfg)
+        if gone:
+            return True, f"파일이 없음: {', '.join(gone)}"
     cached = meta.get("latest_quarter")
     if not cached:
         return True, "스탬프 없음"
@@ -284,6 +330,8 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = load_config()
+    if not args.refresh:
+        seed_from_bundle(cfg)
     meta = read_meta(cfg)
 
     if args.status:
@@ -307,7 +355,7 @@ def main() -> None:
     latest = find_latest_quarter(key)
     print(f"최신 분기: {latest}\n")
 
-    stale, reason = is_stale(meta, latest, cfg["freshness"]["max_age_quarters"])
+    stale, reason = is_stale(meta, latest, cfg["freshness"]["max_age_quarters"], cfg)
     if not stale and not args.refresh:
         print(f"캐시 {reason} — 재수집 불필요. 강제하려면 --refresh")
         return

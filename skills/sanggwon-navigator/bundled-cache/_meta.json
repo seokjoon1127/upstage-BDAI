@@ -1,0 +1,51 @@
+{
+  "latest_quarter": "20261",
+  "fetched_at": "2026-07-29T11:19:40",
+  "source": "서울 열린데이터광장 (data.seoul.go.kr) / 서울신용보증재단",
+  "license": "공공누리 제1유형 (출처표시)",
+  "complete": true,
+  "datasets": {
+    "area": {
+      "service": "TbgisTrdarRelm",
+      "label": "영역-상권",
+      "rows": 1650,
+      "quarters": []
+    },
+    "sales": {
+      "service": "VwsmTrdarSelngQq",
+      "label": "추정매출-상권",
+      "rows": 106920,
+      "quarters": [
+        "20261",
+        "20254",
+        "20253",
+        "20252",
+        "20251"
+      ]
+    },
+    "store": {
+      "service": "VwsmTrdarStorQq",
+      "label": "점포-상권",
+      "rows": 75972,
+      "quarters": [
+        "20261"
+      ]
+    },
+    "footfall": {
+      "service": "VwsmTrdarFlpopQq",
+      "label": "길단위인구-상권",
+      "rows": 1649,
+      "quarters": [
+        "20261"
+      ]
+    },
+    "change": {
+      "service": "VwsmTrdarIxQq",
+      "label": "상권변화지표-상권",
+      "rows": 1650,
+      "quarters": [
+        "20261"
+      ]
+    }
+  }
+}

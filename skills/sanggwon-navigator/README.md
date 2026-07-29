@@ -124,6 +124,10 @@ sanggwon-navigator/
 │   └── krei_cost_ratio_2024.csv
 ├── templates/
 │   └── analysis-report.md
+├── bundled-cache/            # 동봉 캐시 1.6MB — 첫 실행을 0초로
+│                             #   서울 API 는 20만 행이라 처음 받는 데 2~3분 걸린다.
+│                             #   쓰는 컬럼만 추려(55→8) 넣어 즉시 돌게 했다.
+│                             #   분기 스탬프가 붙어 있어 다음 분기엔 자동 갱신된다.
 ├── examples/                 # 실행 예시
 ├── sample-data/              # 입력 데이터 형식 견본 (성동구·5개 분기·35개 업종)
 │                             #   등급은 서울 전체 분포와 견줘 내므로
