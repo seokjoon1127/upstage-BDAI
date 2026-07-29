@@ -251,21 +251,26 @@ def build_biz_section(biz: dict, cost: dict | None, df: pd.DataFrame,
     summary = (f"서울에서 **{biz['name']}**{_josa(biz['name'], '을/를')} 하는 상권은 {n:,}곳이고, "
                f"점포당 월매출 중앙값은 **{med/10000:,.0f}만원**이다.")
 
-    rows = ["| 항목 | 값 | 뜻 |", "|---|---|---|",
-            f"| 서울 점포당 월매출 (중앙값) | {med/10000:,.0f}만원 | 절반은 이보다 많이, 절반은 적게 판다 |"]
+    rows = ["| 항목 | 값 | 뜻 | 출처 |", "|---|---|---|---|",
+            f"| 서울 점포당 월매출 (중앙값) | {med/10000:,.0f}만원 | "
+            f"절반은 이보다 많이, 절반은 적게 판다 | 서울시 (카드 실측) |"]
 
     if cost:
+        krei = f"KREI · {cost.get('krei_name', '외식업')}"
         rows += [
-            f"| 식재료비 | 매출의 **{cost['food_cost']*100:.1f}%** | 1만원 팔면 {cost['food_cost']*10000:,.0f}원 |",
-            f"| 인건비 | 매출의 **{cost['labor_cost']*100:.1f}%** | 1만원 팔면 {cost['labor_cost']*10000:,.0f}원 |",
-            f"| 임대료 제외 원가율 | **{cost['ex_rent_cost_ratio']*100:.1f}%** | 월세 빼고 나가는 돈 |",
+            f"| 식재료비 | 매출의 **{cost['food_cost']*100:.1f}%** | "
+            f"1만원 팔면 {cost['food_cost']*10000:,.0f}원 | {krei} |",
+            f"| 인건비 | 매출의 **{cost['labor_cost']*100:.1f}%** | "
+            f"1만원 팔면 {cost['labor_cost']*10000:,.0f}원 | {krei} |",
+            f"| 임대료 제외 원가율 | **{cost['ex_rent_cost_ratio']*100:.1f}%** | "
+            f"월세 빼고 나가는 돈 | {krei} |",
             f"| **손익분기 임대료율** | **{cost['breakeven_burden']*100:.1f}%** | "
-            f"월세가 매출의 이 비율을 넘으면 적자 |",
+            f"월세가 매출의 이 비율을 넘으면 적자 | 100% − 원가율 |",
         ]
     if prem and prem.get("권리금 수준_평균"):
         rows.append(
             f"| 권리금 (서울 평균) | {prem['권리금 수준_평균']:,.0f}만원 | "
-            f"권리금 있는 점포 {prem.get('권리금 유 비율', 0):.0f}% |"
+            f"권리금 있는 점포 {prem.get('권리금 유 비율', 0):.0f}% | 한국부동산원 |"
         )
 
     if cost:
@@ -278,6 +283,44 @@ def build_biz_section(biz: dict, cost: dict | None, df: pd.DataFrame,
         plain = ("> 💡 **쉽게 말하면** — 이 업종은 외식업 경영실태 조사 대상이 아니라 "
                  "원가 구조를 낼 수 없다. 임대료 부담률까지만 본다.")
     return summary, "\n".join(rows), plain
+
+
+def build_grade_explain(row: pd.Series, cfg: dict) -> str:
+    """등급이 어떻게 나왔는지 계산을 펼쳐 보인다.
+
+    총점 0.579 만 던지면 왜 B 인지 알 수 없다. 가중치와 컷오프를 같이 보여준다.
+    숫자는 config/defaults.yaml 에서 읽는다 — 코드에 박지 않는다.
+    """
+    cp = cfg["commercial_power"]
+    w, cut = cp["weights"], cp["grade_cutoffs"]
+    score = row.get("score")
+    if pd.isna(score):
+        return ""
+
+    band = " · ".join(f"**{g}** {v}점 이상" for g, v in cut.items()) + " · 그 아래 **E**"
+    lines = [
+        "<details><summary><b>이 등급은 어떻게 나왔나</b> (계산 펼치기)</summary>\n",
+        "지표 5개를 **서울 전체 같은 업종 상권과 견줘** 백분위로 바꾼 뒤, 가중치를 곱해 더한다.",
+        "절대 금액이 아니라 순위로 보는 이유는, 업종마다 매출 규모가 다르기 때문이다.\n",
+        "| 지표 | 가중치 | 이 상권 백분위 | 기여 = 백분위 × 가중치 |",
+        "|---|---|---|---|",
+    ]
+    for m in METRICS:
+        p = row.get(f"pct_{m}")
+        if pd.isna(p):
+            lines.append(f"| {METRIC_LABELS[m]} | {w[m]:.2f} | 자료 없음 | — |")
+            continue
+        lines.append(f"| {METRIC_LABELS[m]} | {w[m]:.2f} | {p*100:.0f}점 | {p*w[m]:.3f} |")
+    lines += [
+        f"| **합계** | **1.00** | | **{score:.3f}** |\n",
+        f"합계 {score:.3f} → 100점 만점으로 **{score*100:.1f}점** → 등급 **{row['grade']}**",
+        f"- 등급 구간: {band}",
+        "- 경쟁 밀도는 **낮을수록 좋은 지표**라 백분위를 뒤집어 넣는다.",
+        f"- 가중치와 구간은 `config/defaults.yaml` 에, 그렇게 정한 이유는 "
+        "`reference/scoring_rules.md` 에 있다.\n",
+        "</details>",
+    ]
+    return "\n".join(lines)
 
 
 def build_cross_plain(row: pd.Series, cost: dict | None) -> str:
@@ -447,10 +490,19 @@ def build_policy_summary(pol: dict | None) -> str:
         return "_정책 조회를 생략했다._"
     total = sum(len(v) for v in pol["branches"].values())
     uncond = len(pol["branches"].get("unconditional", []))
-    return (f"오늘 기준 접수 중인 제도를 조건별로 갈랐다. "
-            f"전체 {pol['total_fetched']:,}건 → 지역 {pol['after_region']}건 → "
-            f"소상공인 관련 {pol['after_relevance']}건 중 **{total}건**을 골랐다. "
-            f"**아무 조건 없이 신청 가능한 것만 {uncond}건**이다.")
+    who = ("답해주신 조건에 맞는 것만 남겼다." if pol.get("profile")
+           else "조건을 못 받아서 조건별로 갈라 전부 보여준다.")
+    return (
+        f"오늘 기준 **접수 중인 것만** 골랐다. {who}\n\n"
+        f"```\n"
+        f"전체 {pol['total_fetched']:,}건\n"
+        f"  → 서울·전국 사업만            {pol['after_region']}건   (타 시도 공고 제외)\n"
+        f"  → 소상공인·창업 관련만         {pol['after_relevance']}건    (수출·R&D·박람회 제외)\n"
+        f"  → 접수 중 + 조건별 정리        {total}건\n"
+        f"```\n\n"
+        f"이 중 **아무 조건 없이 신청 가능한 것이 {uncond}건**이다. "
+        f"자세히 보여주는 위쪽 3건은 **공고문 첨부를 열어 지원자격을 뽑아** 붙였다."
+    )
 
 
 def build_verdict(row: pd.Series, sub: pd.DataFrame, seoul_vac: float,
@@ -818,6 +870,7 @@ def main() -> None:
         "policy_summary": build_policy_summary(pol),
         "area_summary": _area[0], "area_table": _area[1], "area_plain": _area[2],
         "biz_summary": _bizs[0], "biz_table": _bizs[1], "biz_plain": _bizs[2],
+        "grade_explain": build_grade_explain(row, cfg),
         "cross_plain": build_cross_plain(row, _cost),
         "final_summary": build_final_summary(row, _cost, pol, args.region, biz["name"]),
         "verdict": build_verdict(row, sub, seoul_vac, prem, pol),

@@ -50,6 +50,8 @@
 |---|---|---|---|---|
 {{metric_table}}
 
+{{grade_explain}}
+
 {{demotion_note}}
 
 {{cost_section}}
