@@ -125,7 +125,10 @@ sanggwon-navigator/
 ├── templates/
 │   └── analysis-report.md
 ├── examples/                 # 실행 예시
-├── sample-data/              # 성동구 소량 샘플
+├── sample-data/              # 입력 데이터 형식 견본 (성동구·5개 분기·35개 업종)
+│                             #   등급은 서울 전체 분포와 견줘 내므로
+│                             #   이 샘플만으로는 등급 계산이 성립하지 않는다.
+│                             #   "데이터가 이렇게 생겼다"를 보여주는 용도다.
 └── data/cache/               # parquet 캐시 — 스크립트가 생성 (zip 제외)
 ```
 
