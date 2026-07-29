@@ -54,8 +54,10 @@ def load_cache(cfg: dict) -> dict:
     try:
         from fetch_data import seed_from_bundle
         seed_from_bundle(cfg)
-    except Exception:                                     # noqa: BLE001
-        pass
+    except Exception as e:                                # noqa: BLE001
+        # 조용히 넘기면 "왜 2분씩 걸리지?" 를 아무도 못 밝힌다. 진행은 하되 말은 한다.
+        print(f"⚠️ 동봉 캐시를 깔지 못했습니다 ({type(e).__name__}: {e}). "
+              "API 수집으로 진행합니다 — 처음이면 2~3분 걸립니다.", file=sys.stderr)
 
     meta_path = cache / "_meta.json"
     if not meta_path.exists():
