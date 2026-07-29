@@ -4,7 +4,7 @@
 > **"여기서 얼마 벌고 · 얼마 나가고 · 얼마 받을 수 있나"를 한 장으로.**
 
 ```bash
-python scripts/make_report.py --region 성수동 --biz 카페
+python3 scripts/make_report.py --region 성수동 --biz 카페
 ```
 
 ---
@@ -183,7 +183,7 @@ pip install pandas pyarrow pyyaml
 #   BIZINFO_API_KEY=...    기업마당
 
 cd skills/sanggwon-navigator
-python scripts/make_report.py --region 성수동 --biz 카페
+python3 scripts/make_report.py --region 성수동 --biz 카페
 ```
 
 첫 실행에서 캐시가 없으면 자동 수집한다(약 2분, 호출 약 200회).

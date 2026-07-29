@@ -98,7 +98,7 @@ description: >
 
 ```bash
 # 20·30대 · 첫 창업 · 해당없음
-python scripts/make_report.py --region 성수동 --biz 카페 --profile "1 1 0"
+python3 scripts/make_report.py --region 성수동 --biz 카페 --profile "1 1 0"
 ```
 
 - 사용자가 그냥 말로 답하면(`"39세 첫 창업이요"`) `--profile "청년 최초창업"` 도 받는다.
@@ -127,10 +127,24 @@ python scripts/make_report.py --region 성수동 --biz 카페 --profile "1 1 0"
 
 ```bash
 cd <스킬 폴더>
-# 없을 때만. 외부 관리 환경이면 첫 줄이 막히므로 둘째 줄로 간다.
-pip install pandas pyarrow pyyaml || pip install --break-system-packages pandas pyarrow pyyaml
-python scripts/make_report.py --region 성수동 --biz 카페
+
+# ⚠️ pip 가 아니라 python3 -m pip 로 깐다. 스크립트를 돌릴 파이썬에 그대로 넣기 위해서다.
+python3 -m pip install pandas pyarrow pyyaml \
+  || python3 -m pip install --break-system-packages pandas pyarrow pyyaml
+
+python3 scripts/make_report.py --region 성수동 --biz 카페
 ```
+
+> **`pip install` 만 쓰면 안 된다.** `pip` 와 `python3` 가 서로 다른 파이썬을 가리키는
+> 환경이 있다. 설치는 성공했는데 실행하면 `ModuleNotFoundError: No module named 'yaml'`
+> 이 나고, 없는 모듈을 하나씩 다시 까느라 시간을 버린다.
+> **깔 때와 돌릴 때 같은 이름(`python3`)을 쓴다.**
+>
+> 한 번에 확인하려면:
+> ```bash
+> python3 -c "import pandas, pyarrow, yaml; print('ok')"
+> ```
+> `ok` 가 나오면 설치 끝. 아니면 위 설치 줄을 다시 돌린다.
 
 캐시가 없거나 낡았으면 데이터를 자동으로 받는다. 사람이 개입하지 않는다.
 상권을 직접 고르려면 `--trdar 성수동카페거리`, 네트워크가 막히면 `--skip-policy`.
@@ -141,8 +155,8 @@ python scripts/make_report.py --region 성수동 --biz 카페
 **이건 실패가 아니다.** 분기 하나를 받을 때마다 저장하므로 받은 만큼은 남는다.
 
 ```bash
-python scripts/fetch_data.py     # 타임아웃 → 다시 실행 → 이어받음 (보통 2~3회)
-python scripts/fetch_data.py --status
+python3 scripts/fetch_data.py     # 타임아웃 → 다시 실행 → 이어받음 (보통 2~3회)
+python3 scripts/fetch_data.py --status
 ```
 
 `--status` 가 **미완료**라고 하면 같은 명령을 다시 친다. 이미 받은 것은 건너뛰므로
@@ -281,7 +295,7 @@ HTML 은 한 파일로 완결되어(외부 로드 없음) 바로 열린다. 5부
 Document Parse 로만 읽힌다**(전체의 약 13%). hwp 는 지원 형식이 아니라 건너뛴다.
 
 ```bash
-python scripts/policy_detail.py --district 성동구 --top 3
+python3 scripts/policy_detail.py --district 성동구 --top 3
 ```
 
 자세히 보여줄 **상위 3건에만**, 각 **앞 5쪽만** 본다. 공고 ID로 캐시하므로 같은 공고를
@@ -301,11 +315,11 @@ python scripts/policy_detail.py --district 성동구 --top 3
 | 지원제도 | 매일 | 캐시하지 않는다. 마감일이 화석이 되면 안 된다 |
 
 ```bash
-python scripts/fetch_data.py --status      # 상권 캐시 상태
-python scripts/rent.py --status            # 부동산원 캐시 상태
-python scripts/parse_lease_pdf.py --check  # 새 실태조사 떴는지 확인 (크레딧 0)
-python scripts/parse_lease_pdf.py          # 최신본 받아서 재파싱 → CSV 갱신
-python scripts/fetch_data.py --refresh     # 분기 강제 갱신
+python3 scripts/fetch_data.py --status      # 상권 캐시 상태
+python3 scripts/rent.py --status            # 부동산원 캐시 상태
+python3 scripts/parse_lease_pdf.py --check  # 새 실태조사 떴는지 확인 (크레딧 0)
+python3 scripts/parse_lease_pdf.py          # 최신본 받아서 재파싱 → CSV 갱신
+python3 scripts/fetch_data.py --refresh     # 분기 강제 갱신
 ```
 
 **임대료 원본은 주소도 쪽 번호도 코드에 박아두지 않는다.** 자료실에서 그때그때 가장
