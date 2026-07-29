@@ -118,6 +118,7 @@ sanggwon-navigator/
 │   ├── rent.py               # 임대료·공실률·권리금 → 진입비용 등급 → 4처방
 │   ├── match_policy.py       # 지원제도 필터 → 조건별 분기 분류
 │   ├── policy_detail.py      # 공고문 첨부 → 지원자격 추출 (Document Parse + Solar)
+│   ├── render_html.py        # 마크다운 리포트 → 한 파일 HTML (외부 로드 없음)
 │   └── make_report.py        # 파이프라인 전체 관통 → 리포트 생성
 ├── reference/
 │   ├── scoring_rules.md      # ★ 등급 기준의 근거
@@ -189,7 +190,7 @@ python scripts/make_report.py --region 성수동 --biz 카페
 
 | 명령 | 하는 일 |
 |---|---|
-| `make_report.py --region 성수동 --biz 카페` | 리포트 생성 (전 과정) |
+| `make_report.py --region 성수동 --biz 카페` | 리포트 생성 — `.md` + `.html` 두 개 |
 | `analyze.py --biz 카페 --top 10` | 서울 전체 상권 랭킹 (개발·검증용) |
 | `rent.py --district 성동구` | 자치구 임대료 확인 |
 | `match_policy.py --district 성동구` | 지원제도만 조회 |

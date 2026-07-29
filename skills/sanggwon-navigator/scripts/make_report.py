@@ -742,6 +742,7 @@ def main() -> None:
     ap.add_argument("--trdar", help="상권명을 직접 지정 (기본값: 매출 1위)")
     ap.add_argument("--out", help="출력 경로")
     ap.add_argument("--skip-policy", action="store_true", help="정책 조회 생략 (오프라인 테스트)")
+    ap.add_argument("--no-html", action="store_true", help="HTML 리포트를 만들지 않는다")
     ap.add_argument("--profile",
                     help='번호 "1 1 0" (연령/창업경험/해당사항) 또는 말 "청년 최초창업". '
                          "없으면 조건별 분기를 전부 보여준다")
@@ -862,6 +863,17 @@ def main() -> None:
     out = Path(args.out) if args.out else out_dir / f"{args.region}_{biz['name']}_{meta['latest_quarter']}.md"
     out.write_text(tpl, encoding="utf-8")
     print(f"\n리포트 생성 완료 → {out}")
+
+    # HTML 도 함께 낸다. 채팅에 235줄을 쏟는 대신 이 파일을 건네면 된다.
+    if not args.no_html and out.suffix.lower() == ".md":
+        try:
+            from render_html import render
+            page = out.with_suffix(".html")
+            page.write_text(render(tpl, f"{args.region} {biz['name']} 상권 진단"),
+                            encoding="utf-8")
+            print(f"HTML 리포트     → {page}")
+        except Exception as e:                            # noqa: BLE001
+            print(f"HTML 변환 생략 ({type(e).__name__})")
 
 
 if __name__ == "__main__":
