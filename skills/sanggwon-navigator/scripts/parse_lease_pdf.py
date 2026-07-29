@@ -285,8 +285,12 @@ def locate_table(pdf: Path, key: str, chunk: int = 8, stride: int = 6,
     )
 
 
-def parse_document(path: Path, key: str) -> dict:
-    """Document Parse 호출. multipart/form-data 를 직접 만든다(외부 의존성 없이)."""
+def parse_document(path: Path, key: str, mime: str = "application/pdf") -> dict:
+    """Document Parse 호출. multipart/form-data 를 직접 만든다(외부 의존성 없이).
+
+    mime 은 PDF 말고도 이미지(png/jpg)·docx 를 보낼 수 있게 열어 둔 것이다.
+    정책 공고문 중 12%가 이미지라 그쪽에서 쓴다.
+    """
     boundary = uuid.uuid4().hex
     fields = {"model": "document-parse", "output_formats": "['html','markdown']", "ocr": "force"}
 
@@ -297,7 +301,7 @@ def parse_document(path: Path, key: str) -> dict:
     body += f"--{boundary}\r\n".encode()
     body += (
         f'Content-Disposition: form-data; name="document"; filename="{path.name}"\r\n'
-        "Content-Type: application/pdf\r\n\r\n"
+        f"Content-Type: {mime}\r\n\r\n"
     ).encode()
     body += path.read_bytes()
     body += f"\r\n--{boundary}--\r\n".encode()

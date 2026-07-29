@@ -600,6 +600,8 @@ def _policy_card(p: dict, detail: bool) -> list[str]:
     summary = _clean_summary(p.get("bsnsSumryCn", ""), 130)
     if summary:
         lines.append(f"　{summary}")
+    if p.get("_eligibility"):
+        lines.append("　**자격** " + " · ".join(p["_eligibility"]))
     if url:
         lines.append(f"　[공고문·신청하기]({url}) · 신청기간 {dl['raw']}")
     lines.append("")
@@ -620,6 +622,17 @@ def build_policy_section(pol: dict) -> str:
     core = [p for p in uncond if _is_core(p)]
     rest = [p for p in uncond if not _is_core(p)]
     ordered = core + rest
+
+    # 자세히 보여줄 3건에만 공고문을 열어 지원자격을 붙인다.
+    # API 에 자격 필드가 없어서 첨부를 읽는 수밖에 없다. 실패하면 그냥 없이 간다.
+    if ordered:
+        try:
+            from policy_detail import enrich
+            got = enrich(ordered[:3], top_n=3)
+            print(f"지원자격 확인: {got}/3건")
+        except Exception as e:                            # noqa: BLE001
+            print(f"지원자격 확인 생략 ({type(e).__name__})")
+
     if ordered:
         out.append("### 조건 없이 지금 신청 가능\n")
         for p in ordered[:3]:

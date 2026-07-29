@@ -113,6 +113,7 @@ sanggwon-navigator/
 │   ├── analyze.py            # 파생지표 5종 → 백분위 → 상권력 등급 A~E
 │   ├── rent.py               # 임대료·공실률·권리금 → 진입비용 등급 → 4처방
 │   ├── match_policy.py       # 지원제도 필터 → 조건별 분기 분류
+│   ├── policy_detail.py      # 공고문 첨부 → 지원자격 추출 (Document Parse + Solar)
 │   └── make_report.py        # 파이프라인 전체 관통 → 리포트 생성
 ├── reference/
 │   ├── scoring_rules.md      # ★ 등급 기준의 근거
@@ -155,6 +156,7 @@ python scripts/make_report.py --region 성수동 --biz 카페
 | `analyze.py --biz 카페 --top 10` | 서울 전체 상권 랭킹 (개발·검증용) |
 | `rent.py --district 성동구` | 자치구 임대료 확인 |
 | `match_policy.py --district 성동구` | 지원제도만 조회 |
+| `policy_detail.py --district 성동구` | 공고문에서 지원자격 추출 |
 | `fetch_data.py --status` / `--refresh` | 캐시 확인 / 분기 갱신 |
 
 ---
@@ -239,6 +241,8 @@ KREI 「외식업체 경영실태 조사」는 임차료를 **별도 항목**으
 - 보증금은 공공데이터로 확인할 수 없다. 권리금은 서울 시도 단위 업종 평균만 제공한다.
 - 서울 외 지역은 상권 등급을 낼 수 없다. 지원제도 매칭만 제공한다.
 - 지원제도는 공고 키워드로 분류한 것이며, **최종 자격은 공고문 확인이 필요하다.**
+- 지원자격은 첨부 공고문에서 추출한다. API 에 자격 필드가 없기 때문이다.
+  첨부가 hwp/hwpx 인 공고(약 23%)는 읽을 수 없어 자격 없이 제시한다.
 
 ### 전국 확장에 대하여
 
