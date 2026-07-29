@@ -135,27 +135,12 @@ def build_cost_section(row: pd.Series, seoul_vac: float, prem: dict | None, cfg:
             "> 위의 상권력 판정은 그대로 유효합니다.",
         ])
 
+    # 임대료·공실률 수치는 1부에 이미 있다. 여기서는 그것을 매출로 나눈 결과만 보인다.
     lines = [
-        "| 항목 | 값 |",
-        "|---|---|",
-        f"| 부동산원 상권 | **{row['reb_district']}** ({row['reb_match_reason']}) |",
-        f"| ㎡당 월 임대료 | {row['rent_per_sqm']:.1f} 천원 |",
-        f"| {area}㎡(약 {area/3.3:.0f}평) 환산 월 임대료 | **{row['monthly_rent']/10000:,.0f}만원** |",
-        f"| 점포당 월 예상매출 | {row['monthly_sales_per_store']/10000:,.0f}만원 |",
-        f"| **임대료 부담률** | **{row['rent_burden']*100:.1f}%** → 진입비용 **{row['entry_cost']}** |",
-        f"| 공실률 | {row['vacancy_rate']:.1f}% (서울 주요상권 평균 {seoul_vac:.1f}%) |",
+        f"**임대료 부담률 {row['rent_burden']*100:.1f}%** = "
+        f"월세 {row['monthly_rent']/10000:,.0f}만원 ÷ 점포당 월매출 "
+        f"{row['monthly_sales_per_store']/10000:,.0f}만원 → 진입비용 **{row['entry_cost']}**",
     ]
-
-    # 공실률은 임차인에게 나쁜 소식이 아니다 — 협상 여지다
-    if row["vacancy_rate"] > seoul_vac:
-        lines.append(
-            f"\n> 💬 공실률이 서울 평균보다 **{row['vacancy_rate'] - seoul_vac:.1f}%p 높습니다.**\n"
-            "> 임대인이 아쉬운 상황이라는 뜻이므로 임대료 협상 여지가 있습니다."
-        )
-    else:
-        lines.append(
-            f"\n> 💬 공실률이 서울 평균보다 낮습니다. 매물이 귀하므로 협상 여지는 크지 않습니다."
-        )
 
     # ── 수익 추정 (외식업만) ──
     if pd.notna(row.get("monthly_profit")):
@@ -177,22 +162,10 @@ def build_cost_section(row: pd.Series, seoul_vac: float, prem: dict | None, cfg:
             f"| − 세금·공과·기타 | −{m*row['etc_cost']/10000:,.0f}만원 | {row['etc_cost']*100:.1f}% | KREI 조사 |",
             f"| **= 월 예상 영업이익** | **{row['monthly_profit']/10000:,.0f}만원** | "
             f"**{row['profit_margin']*100:.1f}%** | |",
-            "",
-            f"> 손익분기 임대료율은 **{row['breakeven_burden']*100:.1f}%** 다. "
-            f"이 상권은 {row['rent_burden']*100:.1f}% 로 "
-            + ("**이미 넘었다.**" if row["rent_burden"] > row["breakeven_burden"] else "아직 여유가 있다.")
-            + " 임차료 외 비용은 전국 평균 가정이므로 서울은 실제로 더 나갈 수 있다.",
         ]
+        # 손익분기 해설은 바로 아래 '💡 쉽게 말하면' 이 하고, 한계는 '근거와 한계' 에 적는다.
 
-    if prem:
-        avg = prem.get("권리금 수준_평균")
-        rate = prem.get("권리금 유 비율")
-        if avg:
-            lines.append(
-                f"\n> 💰 서울 **{prem['industry'].strip()}** 평균 권리금 **{avg:,.0f}만원** "
-                f"(권리금 있는 점포 비율 {rate:.0f}%, {prem['year']}년 기준)\n"
-                "> 초기 자금 계획에 임대 보증금과 인테리어를 별도로 잡아야 합니다."
-            )
+    # 권리금은 2부 표에 있다. 여기서 또 적지 않는다.
     return "\n".join(lines)
 
 
@@ -374,6 +347,7 @@ def build_final_summary(row: pd.Series, cost: dict | None, pol: dict | None,
     todo = []
     if pd.notna(row.get("vacancy_rate")) and row["vacancy_rate"] > 8:
         todo.append("공실이 많은 편이니 계약 전 **임대료·렌트프리 협상**을 꼭 시도한다")
+    todo.append("월세 말고 **권리금·보증금·인테리어**까지 더해 초기자금을 잡는다 (2부 권리금 참고)")
     todo.append("위 지원제도 중 **마감이 가까운 것부터** 공고문을 열어 자격을 확인한다")
     if row["grade"] in ("A", "B"):
         todo.append("같은 지역의 다른 상권 매물도 함께 보고 **월세를 비교**한다")
@@ -536,15 +510,9 @@ def build_verdict(row: pd.Series, sub: pd.DataFrame, seoul_vac: float,
                 "매출을 평균 이상으로 끌어올리거나 임대료를 낮추지 않으면 버티기 어렵다."
             )
 
-    # ③ 공실률을 협상 카드로
-    if pd.notna(row.get("vacancy_rate")) and row["vacancy_rate"] > seoul_vac * 1.3:
-        lines.append(
-            f"- 공실률이 {row['vacancy_rate']:.1f}% 로 서울 평균({seoul_vac:.1f}%)의 "
-            f"{row['vacancy_rate']/seoul_vac:.1f}배다. **빈 점포가 많다는 건 임대인이 아쉽다는 뜻**이니 "
-            "계약 전 임대료·렌트프리 협상을 반드시 시도할 것."
-        )
+    # 공실률 협상은 5부 '다음에 할 일'에, 권리금은 2부 표에 있다. 여기서 또 적지 않는다.
 
-    # ④ 같은 이름의 다른 상권 중 더 나은 대안이 있는가
+    # ③ 같은 이름의 다른 상권 중 더 나은 대안이 있는가
     alt = sub[(sub["grade"].isin(["A", "B"])) & (sub["TRDAR_CD_NM"] != row["TRDAR_CD_NM"])]
     alt = alt[alt["entry_cost"].isin(["저", "중"])]
     if not alt.empty:
@@ -554,14 +522,7 @@ def build_verdict(row: pd.Series, sub: pd.DataFrame, seoul_vac: float,
             f"부담률 {a['rent_burden']*100:.0f}%) 도 있다. 매물을 함께 보는 편이 낫다."
         )
 
-    # ⑤ 초기자금
-    if prem and prem.get("권리금 수준_평균"):
-        lines.append(
-            f"- 초기자금은 권리금 평균 **{prem['권리금 수준_평균']:,.0f}만원**에 "
-            "보증금·인테리어를 더해 잡아야 한다. 월 수익만 보고 들어가면 자금이 막힌다."
-        )
-
-    # ⑥ 마감 임박 제도
+    # ④ 마감 임박 제도
     if pol:
         urgent = [
             p for items in pol["branches"].values() for p in items
@@ -883,6 +844,7 @@ def main() -> None:
             "- 매출은 카드 데이터 기반 **추정치**이며 현금 거래가 반영되지 않는다.\n"
             "- 점포 3개 미만 상권은 평균이 대표성을 갖지 못해 등급을 내지 않는다.\n"
             "- 전년 매출이 업종 중앙값의 50% 미만이면 성장률을 산출하지 않는다 (기저효과).\n"
+            "- 영업이익에서 **임차료 외 비용은 전국 평균 가정**이다. 서울은 실제로 더 나갈 수 있다.\n"
             "- 지원제도는 공고 본문 키워드로 분류한 것이며, **최종 자격은 공고문을 직접 확인해야 한다.**"
         ),
     }
