@@ -655,6 +655,53 @@ def build_policy_section(pol: dict) -> str:
     return "\n".join(out) if out else "_해당하는 지원제도를 찾지 못했습니다._"
 
 
+def build_sources(meta: dict, row: pd.Series, pol: dict | None) -> str:
+    """리포트가 실제로 쓴 데이터의 출처를 전부 적는다.
+
+    임대료·원가·정책은 상권 데이터와 다른 기관에서 온다. 본문에서 쓰는데
+    출처 목록에 없으면 안 된다.
+
+    임대료 원본은 여기서 최신 여부도 함께 확인한다. 게시판 제목만 읽는 무료
+    조회이고 주 1회로 제한되며, 실패해도 리포트를 막지 않는다.
+    """
+    lines = [
+        f"- 상권 데이터: {meta['source']} — {meta['license']}",
+        f"  - 기준 분기 {meta['latest_quarter']}, 수집 {meta['fetched_at']}",
+    ]
+
+    try:
+        import parse_lease_pdf as lease
+        stamp = lease.read_stamp()
+        state, _ = lease.check_freshness()
+    except Exception:                                     # noqa: BLE001
+        stamp, state = {}, "unknown"
+
+    if stamp.get("year"):
+        tail = {
+            "stale": "⚠️ 새 회차가 공개되었습니다 — `parse_lease_pdf.py` 로 갱신하세요",
+            "unknown": "최신 여부 확인 실패 — 이 회차로 진행",
+        }.get(state, "최신본 확인 완료")
+        lines += [
+            f"- 실측 임대료: 서울시 「{stamp['title']}」 (서울시 공정거래종합상담센터)",
+            f"  - 145개 주요상권 1층 점포 12,531개 조사 · {stamp.get('rows', '?')}개 상권을 "
+            f"Upstage Document Parse + Solar 로 추출 · {tail}",
+        ]
+
+    if pd.notna(row.get("rent_per_sqm")):
+        q = row.get("rent_quarter")
+        lines.append(f"- 임대료·공실률·권리금: {rent_mod.SOURCE} — {rent_mod.LICENSE}"
+                     + (f" · 기준 분기 {q}" if q else ""))
+
+    if row.get("krei_name"):
+        lines.append("- 업종 원가 구조: 한국농촌경제연구원(KREI) 「외식업체 경영실태 조사」"
+                     f" — {row['krei_name']} 기준")
+
+    if pol:
+        lines.append(f"- 지원제도: {pol['source']} — 조회 {pol['as_of']}")
+
+    return "\n".join(lines)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="상권 진단 리포트 생성")
     ap.add_argument("--region", required=True)
@@ -762,13 +809,7 @@ def main() -> None:
         "policy_region": pol["after_region"] if pol else "-",
         "policy_relevant": pol["after_relevance"] if pol else "-",
         "policy_section": build_policy_section(pol) if pol else "_정책 조회를 생략했습니다._",
-        "sources": (
-            f"- 상권 데이터: {meta['source']} — {meta['license']}\n"
-            f"  - 기준 분기 {meta['latest_quarter']}, 수집 {meta['fetched_at']}\n"
-            + (f"- 지원제도: {pol['source']} — 조회 {pol['as_of']}\n" if pol else "")
-            + "- 등급 산정 방법론: OECD·EC JRC (2008) *Handbook on Constructing Composite Indicators*; "
-              "Saisana, Saltelli & Tarantola (2005), *JRSS Series A* 168(2)"
-        ),
+        "sources": build_sources(meta, row, pol),
         "limitations": (
             "- 매출은 카드 데이터 기반 **추정치**이며 현금 거래가 반영되지 않는다.\n"
             "- 점포 3개 미만 상권은 평균이 대표성을 갖지 못해 등급을 내지 않는다.\n"
