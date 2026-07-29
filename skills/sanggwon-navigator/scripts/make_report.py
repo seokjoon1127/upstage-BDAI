@@ -464,8 +464,12 @@ def build_policy_summary(pol: dict | None) -> str:
         return "_정책 조회를 생략했다._"
     total = sum(len(v) for v in pol["branches"].values())
     uncond = len(pol["branches"].get("unconditional", []))
-    who = ("답해주신 조건에 맞는 것만 남겼다." if pol.get("profile")
-           else "조건을 못 받아서 조건별로 갈라 전부 보여준다.")
+    if not pol.get("asked"):
+        who = "조건을 못 받아서 조건별로 갈라 전부 보여준다."
+    elif pol.get("profile"):
+        who = "답해주신 조건에 맞는 것만 남겼다."
+    else:
+        who = "답해주신 조건에 특별히 해당되는 게 없어, 누구나 신청 가능한 것만 남겼다."
     return (
         f"오늘 기준 **접수 중인 것만** 골랐다. {who}\n\n"
         f"```\n"
@@ -738,8 +742,9 @@ def main() -> None:
     ap.add_argument("--trdar", help="상권명을 직접 지정 (기본값: 매출 1위)")
     ap.add_argument("--out", help="출력 경로")
     ap.add_argument("--skip-policy", action="store_true", help="정책 조회 생략 (오프라인 테스트)")
-    ap.add_argument("--profile", help="사용자 조건: 청년 최초창업 여성 장애인 (띄어쓰기로 여러 개). "
-                                      "없으면 조건별 분기를 전부 보여준다")
+    ap.add_argument("--profile",
+                    help='번호 "1 1 0" (연령/창업경험/해당사항) 또는 말 "청년 최초창업". '
+                         "없으면 조건별 분기를 전부 보여준다")
     args = ap.parse_args()
 
     cfg = load_config()

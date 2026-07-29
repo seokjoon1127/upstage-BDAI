@@ -216,19 +216,47 @@ PROFILE_BRANCH = {
 }
 
 
-def parse_profile(raw: str | None) -> set[str]:
+# 번호로 답할 때의 자리별 뜻. 사람이 고르는 건 숫자 세 개다.
+#   1번째 = 연령      1) 만 39세 이하   2) 만 40세 이상
+#   2번째 = 창업 경험  1) 첫 창업       2) 재도전       3) 이미 운영 중
+#   3번째 = 해당사항   0) 없음  1) 여성  2) 장애인  3) 보훈   (여러 개면 붙여서 "13")
+#
+# 숫자를 코드가 직접 푼다. 에이전트가 말로 옮기다 틀리면 엉뚱한 제도가 나온다.
+NUMERIC_SLOTS = [
+    {"1": {"age_youth"}},
+    {"1": {"first_time_founder"}, "2": {"first_time_founder"}},
+    {"1": {"female"}, "2": {"disabled_or_veteran"}, "3": {"disabled_or_veteran"}},
+]
+
+
+def parse_profile(raw: str | None) -> set[str] | None:
     """사용자 답변을 분기 이름으로 옮긴다.
 
-    답이 없으면 빈 집합 → 조건별 분기를 전부 보여준다(기존 동작).
-    답이 있으면 해당 분기 + 무조건 분기만 남긴다.
+    두 가지를 받는다:
+      - 번호  `"1 1 0"` · `"1-1-13"`  → 자리별로 푼다
+      - 말    `"청년 최초창업"`        → 낱말로 찾는다
+
+    **답 없음(None)과 "답했지만 해당 없음"(빈 집합)은 다르다.**
+      None      → 조건별 분기를 전부 보여준다
+      빈 집합    → 답을 받았고 해당되는 게 없다 → 무조건 분기만 보여준다
+    "2 3 0"(만 40세·운영 중·해당없음)을 답 없음으로 취급하면
+    받을 수도 없는 청년 제도가 잔뜩 나온다.
     """
-    if not raw:
-        return set()
+    if raw is None or not raw.strip():
+        return None
+
+    tokens = [t for t in re.split(r"[\s,\-/]+", raw.strip()) if t]
+    if tokens and all(t.isdigit() for t in tokens):
+        out: set[str] = set()
+        for i, tok in enumerate(tokens[:len(NUMERIC_SLOTS)]):
+            for ch in tok:                    # "13" → 여성 + 보훈
+                out |= NUMERIC_SLOTS[i].get(ch, set())
+        return out
+
     out = set()
-    for token in raw.replace(",", " ").split():
-        key = token.strip()
+    for token in tokens:
         for word, branch in PROFILE_BRANCH.items():
-            if word in key:
+            if word in token:
                 out.add(branch)
     return out
 
@@ -251,15 +279,16 @@ def match(district: str, zone_type: str | None = None, top_n: int = 10,
     for name in branches:
         branches[name] = sorted(branches[name], key=lambda p: sort_key(p, kw))[:top_n]
 
-    # 프로필을 받았으면 해당 분기 + 무조건 분기만 남긴다.
-    # 답이 없으면 전부 보여준다 — 질문에 답하지 않아도 리포트가 완결되어야 하므로.
-    if profile:
+    # 답을 받았으면 해당 분기 + 무조건 분기만 남긴다.
+    # 답이 아예 없으면(None) 전부 보여준다 — 답하지 않아도 리포트가 완결되어야 하므로.
+    if profile is not None:
         branches = {k: v for k, v in branches.items()
                     if k == "unconditional" or k in profile}
 
     return {
         "district": district,
         "zone_type": zone_type,
+        "asked": profile is not None,
         "profile": sorted(profile) if profile else [],
         "as_of": datetime.now().strftime("%Y-%m-%d"),
         "source": SOURCE,
@@ -276,7 +305,8 @@ def main() -> None:
     ap.add_argument("--district", required=True, help="자치구 (예: 성동구)")
     ap.add_argument("--zone", help="상권 구분 (예: 전통시장)")
     ap.add_argument("--top", type=int, default=10)
-    ap.add_argument("--profile", help="청년 최초창업 여성 장애인 (띄어쓰기로 여러 개)")
+    ap.add_argument("--profile",
+                    help='번호 "1 1 0" (연령/창업경험/해당사항) 또는 말 "청년 최초창업"')
     args = ap.parse_args()
 
     r = match(args.district, args.zone, args.top, parse_profile(args.profile))
